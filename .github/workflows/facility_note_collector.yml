@@ -1,0 +1,59 @@
+# .github/workflows/facility_note_collector.yml
+#
+# Runs facility_note_collector.py daily at 17:00 JST (08:00 UTC),
+# commits the generated Markdown + Excel back to the repo, and
+# emails the result (email step is best-effort inside the script).
+#
+# Required repo secrets (Settings > Secrets and variables > Actions):
+#   SMTP_SERVER   e.g. smtp.gmail.com
+#   SMTP_PORT     e.g. 587
+#   SMTP_USER     sending email address
+#   SMTP_PASS     app password / SMTP password
+#   MAIL_TO       destination email address
+#
+# If you don't want email, you can omit the secrets — the script will
+# print a message and skip that step without failing the job.
+
+name: Facility Note Collector
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # 08:00 UTC = 17:00 JST
+  workflow_dispatch: {}     # allows manual "Run workflow" trigger too
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 openpyxl
+
+      - name: Run collector
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python facility_note_collector.py
+
+      - name: Commit and push results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/ data/
+          git diff --cached --quiet || git commit -m "Daily facility note collection $(date -u +'%Y-%m-%d')"
+          git push
